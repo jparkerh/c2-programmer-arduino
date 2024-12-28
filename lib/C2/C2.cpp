@@ -21,8 +21,8 @@ C2::C2(volatile uint8_t *port, volatile uint8_t *ddr, volatile uint8_t *pin, uin
 void C2::setup() {
   Serial.begin(1000000);
 
-  *_ddr = 0x00 | (1 << _pinD) | (1 << _pinCk);
   *_port = 0x00 | (1 << _pinCk);
+  *_ddr = 0x00 | (1 << _pinCk);
 
   digitalWrite(_pinLed, LOW);
 }
@@ -33,172 +33,197 @@ void C2::setup() {
  * Page 15
  */
 void C2::init() {
-  reset();
-
-  // Enable programming
-  writeAddress(FPCTL);
-  writeData(0x02);
-  writeData(0x04);
-  writeData(0x01);
-
-  // Wait at lesat 20ms
-  delayMicroseconds(30);
-}
-
-/**
- * Device reset
- *
- * Page 10
- */
-void C2::reset() {
-  // Force CK LOW for at least 20us
+  // Force CK LOW for 2us
   *_port &= ~(1 << _pinCk);
-  delayMicroseconds(30);
+  delayMicroseconds(25);
 
   //Force CK HIGH
   *_port |= (1 << _pinCk);
 
   // Wait at least 2us
-  delayMicroseconds(5);
+  delayMicroseconds(3);
+
+  // Enable programming
+  addressWrite(FPCTL);
+
+  dataWrite(0x02);
+  delayMicroseconds(2);
+
+  dataWrite(0x04);
+  delayMicroseconds(2);
+
+  dataWrite(0x01);
+
+  // Wait at least 20ms
+  delayMicroseconds(30);
 }
 
 void C2::deviceInfo() {
-  writeAddress(C2Addresses::DEVICEID);
-  device.id = readData();
+  addressWrite(C2Addresses::DEVICEID);
+  device.id = dataRead();
 
-  writeAddress(C2Addresses::REVID);
-  device.revision = readData();
-}
-
-void C2::writeAddress(uint8_t address) {
-  sendAddressWriteInstruction();
-  sendByte(address);
-  sendStopBit();
+  addressWrite(C2Addresses::REVID);
+  device.revision = dataRead();
 }
 
 void C2::writeSfr(uint8_t address, uint8_t data) {
-  writeAddress(address);
-  writeData(data);
+  addressWrite(address);
+  dataWrite(data);
 }
 
-uint8_t C2::readBits(uint8_t length) {
-  uint8_t mask = 0x01 << (length - 1);
-  uint8_t data = 0;
+void C2::pulseClock() {
+  // Force CK LOW for 2us
+  *_port &= ~(1 << _pinCk);
+  delayMicroseconds(2);
 
+  //Force CK HIGH
+  *_port |= (1 << _pinCk);
+
+  // Wait at least 2us
+  delayMicroseconds(2);
+}
+
+uint8_t C2::dataRead() {
+  // Start bit
+  pulseClock();
+
+  noInterrupts();
+
+  // set to output after start bit
+  *_ddr |= (1 << _pinD);
+  *_port &= ~(1 << _pinD);
+  for(uint8_t i = 0; i < 4; i += 1) {
+    // zeros for the data read instruction
+    pulseClock();
+  }
+  // set to input and enable pull up
   *_ddr &= ~(1 << _pinD);
-  *_pin &= (1 << _pinD);
-  for (uint8_t i = 0; i < length; i += 1) {
-    clockPulse();
 
-    data >>= 1;
+  uint8_t wait = 0;
+  while (wait == 0) {
+    pulseClock();
+    wait = (*_pin & (1 << _pinD));
+  }
+
+  uint8_t output = 0;
+  for(uint8_t i = 0; i < 8; i += 1) {
+    pulseClock();
+    // set the output bit if needed
     if (*_pin & (1 << _pinD)) {
-      data = data | mask;
+      output |= (0x1 << i);
     }
   }
+
+  pulseClock();
+
+  interrupts();
+
+  return output;
+}
+
+uint8_t C2::addressRead() {
+  uint8_t addressInstruction = 0x2;
+
+  // Start bit
+  pulseClock();
+
+  noInterrupts();
+
+  // set to output after start bit
+  *_ddr |= (1 << _pinD);
+  for(uint8_t i = 0; i < 2; i += 1) {
+    if((addressInstruction >> i) & 0x1) {
+      *_port |= (1 << _pinD);
+    } else {
+      *_port &= ~(1 << _pinD);
+    }
+    pulseClock();
+  }
+  // set to input and enable pull up
+  *_ddr &= ~(1 << _pinD);
+
+  uint8_t output = 0;
+  for(uint8_t i = 0; i < 8; i += 1) {
+    pulseClock();
+    // set the output bit if needed
+    if (*_pin & (1 << _pinD)) {
+      output |= (0x1 << i);
+    }
+  }
+  pulseClock();
+
+  return output;
+}
+
+void C2::dataWrite(uint8_t data) {
+  uint16_t dataInstruction = data << 4;
+  dataInstruction |= 0x1;
+
+  // Start bit
+  pulseClock();
+
+  noInterrupts();
+
+  // set to output after start bit
+  *_ddr |= (1 << _pinD);
+  for(uint8_t i = 0; i < 12; i += 1) {
+    if((dataInstruction >> i) & 0x1) {
+      *_port |= (1 << _pinD);
+    } else {
+      *_port &= ~(1 << _pinD);
+    }
+    
+    pulseClock();
+  }
+  // set to input and enable pull up
+  *_ddr &= ~(1 << _pinD);
+
+  uint8_t wait = 0;
+  while (wait == 0) {
+    pulseClock();
+    wait = (*_pin & (1 << _pinD));
+  }
+
+  pulseClock();
+
+  interrupts();
+}
+
+void C2::addressWrite(uint8_t address) {
+  uint16_t addressInstruction = address << 2;
+  addressInstruction |= 0x3;
+
+  // Start bit
+  pulseClock();
+
+  noInterrupts();
+
+  // set to output after start bit
   *_ddr |= (1 << _pinD);
 
-  return data;
-}
-
-void C2::sendStopBit() {
-  sendBits(0x00, 1);
-}
-
-void C2::sendAddressReadInstruction() {
-  uint8_t data = 0x00 | (0x00 << 0) | (ADDRESS_READ << 1);
-  sendBits(data, 3);
-}
-
-void C2::sendDataReadInstruction(uint8_t byte) {
-  uint8_t data = 0x00 | (0x00 << 0) | (DATA_READ << 1) | ((byte - 1) << 3);
-  sendBits(data, 5);
-}
-
-void C2::sendAddressWriteInstruction() {
-  uint8_t data = 0x00 | (0x00 << 0) | (ADDRESS_WRITE << 1);
-  sendBits(data, 3);
-}
-
-void C2::sendDataWriteInstruction(uint8_t byte) {
-  uint8_t data = 0x00 | (0x00 << 0) | (DATA_WRITE << 1) | ((byte - 1) << 3);
-  sendBits(data, 5);
-}
-
-void C2::sendBits(uint8_t data, uint8_t length) {
-  for(uint8_t i = 0; i < length; i += 1) {
-    if(data >> i & 0x01) {
+  for(uint8_t i = 0; i < 10; i += 1) {
+    if((addressInstruction >> i) & 0x1) {
       *_port |= (1 << _pinD);
     } else {
       *_port &= ~(1 << _pinD);
     }
 
-    clockPulse();
+    pulseClock();
   }
-}
+  // set to input and enable pull up
+  *_ddr &= ~(1 << _pinD);
+  // *_port |= 1 << _pinD;
 
-/**
- * Clock strobe
- *
- * Page 10
- */
-void C2::clockPulse() {
-  noInterrupts();
-
-  // Force low for 80ns - 5000ns
-  *_port &= ~(1 << _pinCk);
-  delayMicroseconds(2);
-
-  // Force high for at least 120ns
-  *_port |= (1 << _pinCk);
+  pulseClock();
 
   interrupts();
-}
-
-uint8_t C2::readByte() {
-  return readBits(8);
-}
-
-void C2::sendByte(uint8_t byte) {
-  sendBits(byte, 8);
-}
-
-uint8_t C2::readAddress() {
-  sendAddressReadInstruction();
-  uint8_t retval = readByte();
-  sendStopBit();
-
-  return retval;
-}
-
-void C2::writeData(uint8_t data) {
-  sendDataWriteInstruction(1);
-  sendByte(data);
-  while (readBits(1) == 0) {}
-  sendStopBit();
-}
-
-/**
- * Response for the C2 interface is indicated by a one bit after an arbitary number
- * of 0 bits. The next 8 bit after the first one are the response byte.
- */
-uint8_t C2::waitForResponse() {
-  while(readBits(1) == 0) {}
-  return readBits(8);
-}
-
-uint8_t C2::readData() {
-  sendDataReadInstruction(1);
-  uint8_t response = waitForResponse();
-  sendStopBit();
-
-  return response;
 }
 
 uint8_t C2::pollBitHigh(uint8_t mask) {
   uint8_t retval;
 
   do {
-    retval = readAddress();
+    retval = addressRead();
   } while ((retval & mask) == 0);
 
   return retval;
@@ -208,76 +233,75 @@ uint8_t C2::pollBitLow(uint8_t mask) {
   uint8_t retval;
 
   do {
-    retval = readAddress();
+    retval = addressRead();
   } while (retval & mask);
 
   return retval;
 }
 
 uint8_t C2::readFlashBlock(uint16_t address, uint8_t *data, uint8_t bytes) {
-  writeAddress(C2Addresses::FPDAT);
-  writeData(BLOCK_READ);
+  addressWrite(C2Addresses::FPDAT);
+  dataWrite(BLOCK_READ);
 
   pollBitLow(_inBusy);
   pollBitHigh(_outReady);
 
-  uint8_t value = readData();
+  uint8_t value = dataRead();
   if(value != 0x0D) {
     return EXIT_FAILURE;
   }
 
   // Write high byte of address
-  writeData(address >> 8);
+  dataWrite(address >> 8);
   pollBitLow(_inBusy);
 
   // Write low byte of address
-  writeData(address & 0xFF);
+  dataWrite(address & 0xFF);
   pollBitLow(_inBusy);
 
-  writeData(bytes);
+  dataWrite(bytes);
   pollBitLow(_inBusy);
   pollBitHigh(_outReady);
-
-  readData();
+  dataRead();
 
   for(uint8_t i = 0; i < bytes; i += 1) {
     pollBitHigh(_outReady);
-    data[i] = readData();
+    data[i] = dataRead();
   }
 
   return EXIT_SUCCESS;
 }
 
 uint8_t C2::writeFlashBlock(uint16_t address, uint8_t *data, uint8_t length) {
-  writeAddress(FPDAT);
-  writeData(BLOCK_WRITE);
+  addressWrite(FPDAT);
+  dataWrite(BLOCK_WRITE);
 
   pollBitLow(_inBusy);
   pollBitHigh(_outReady);
 
-  uint8_t value = readData();
+  uint8_t value = dataRead();
   if(value != 0x0D) {
     return EXIT_FAILURE;
   }
 
   // Write high byte of address
-  writeData(address >> 8);
+  dataWrite(address >> 8);
   pollBitLow(_inBusy);
 
   // Write low byte of address
-  writeData(address & 0xFF);
+  dataWrite(address & 0xFF);
   pollBitLow(_inBusy);
 
-  writeData(length);
+  dataWrite(length);
   pollBitLow(_inBusy);
 
   for(uint8_t i = 0; i < length; i += 1) {
-    writeData(data[i]);
+    dataWrite(data[i]);
     pollBitLow(_inBusy);
   }
   pollBitHigh(_outReady);
 
-  value = readData();
+  value = dataRead();
   if(value != 0x0D) {
     return EXIT_FAILURE;
   }
@@ -286,28 +310,28 @@ uint8_t C2::writeFlashBlock(uint16_t address, uint8_t *data, uint8_t length) {
 }
 
 uint8_t C2::eraseDevice() {
-  writeAddress(FPDAT);
-  writeData(DEVICE_ERASE);
+  addressWrite(FPDAT);
+  dataWrite(DEVICE_ERASE);
 
   pollBitLow(_inBusy);
   pollBitHigh(_outReady);
 
-  uint8_t value = readData();
+  uint8_t value = dataRead();
   if(value != 0x0D) {
     return EXIT_FAILURE;
   }
 
-  writeData(0xDE);
+  dataWrite(0xDE);
   pollBitLow(_inBusy);
 
-  writeData(0xAD);
+  dataWrite(0xAD);
   pollBitLow(_inBusy);
 
-  writeData(0xA5);
+  dataWrite(0xA5);
   pollBitLow(_inBusy);
   pollBitHigh(_outReady);
 
-  value = readData();
+  value = dataRead();
   if(value != 0x0D) {
     return EXIT_FAILURE;
   }
@@ -381,14 +405,14 @@ void C2::loop() {
           init();
           deviceInfo();
 
-          switch(device.id) {
-            case C2Devices::EFM8BB1:
-            case C2Devices::EFM8BB2: {
-              writeSfr(0xFF, 0x80);
-              delayMicroseconds(5);
-              writeSfr(0xEF, 0x02);
-            } break;
-          }
+          // switch(device.id) {
+          //   case C2Devices::EFM8BB1:
+          //   case C2Devices::EFM8BB2: {
+          //     writeSfr(0xFF, 0x80);
+          //     delayMicroseconds(5);
+          //     writeSfr(0xEF, 0x02);
+          //   } break;
+          // }
 
           Serial.write(0x81);
           digitalWrite(_pinLed, HIGH);
@@ -397,7 +421,7 @@ void C2::loop() {
         } break;
 
         case Actions::RESET: {
-          reset();
+          // reset();
           resetState();
 
           Serial.write(0x82);

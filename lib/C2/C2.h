@@ -49,19 +49,16 @@ class C2 {
     C2(volatile uint8_t *port, volatile uint8_t *ddr, volatile uint8_t *pin, uint8_t pinCk, uint8_t pinD, uint8_t pinLed);
 
     void init();
-    void reset();
 
     void deviceInfo();
 
-    uint8_t readAddress();
-    void writeAddress(uint8_t address);
+    void pulseClock();
 
-    uint8_t readData();
-    void writeData(uint8_t data);
+    uint8_t dataRead();
+    void dataWrite(uint8_t data);
 
-    uint8_t readBits(uint8_t length);
-    void sendBits(uint8_t data, uint8_t length);
-    void clockPulse();
+    uint8_t addressRead();
+    void addressWrite(uint8_t data);
 
     uint8_t pollBitHigh(uint8_t mask);
     uint8_t pollBitLow(uint8_t mask);
@@ -75,12 +72,6 @@ class C2 {
     uint8_t updateState(uint8_t data);
 
     volatile uint8_t *getMessage();
-
-    void sendByte(uint8_t byte);
-    uint8_t readByte();
-
-    void sendStopBit();
-    uint8_t waitForResponse();
 
     void sendAddressReadInstruction();
     void sendDataReadInstruction(uint8_t byte);

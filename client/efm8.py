@@ -1,5 +1,6 @@
 from hashlib import new
 import serial
+import serial.tools.list_ports
 import time
 import sys
 import argparse
@@ -12,7 +13,7 @@ class ProgrammingInterface:
     # Give Arduino some time
     time.sleep(2)
 
-  def getReadRequest(slef, address, amount):
+  def getReadRequest(self, address, amount):
     return [
         0x05, 0x05,
         amount,
@@ -23,16 +24,14 @@ class ProgrammingInterface:
     ]
 
   def initialize(self):
-    done = False
-    while not done:
-      try:
-        self.serial.write(b"\x01\x00")
-        result = self.serial.read(1)
-        assert result == b"\x81"
-        done = True
-      except:
-        print("Error: Could not establish connection - try resetting your Arduino")
-        sys.exit(1)
+    try:
+      self.serial.write(b"\x01\x00")
+      result = self.serial.read(1)
+      assert result == b"\x81"
+      done = True
+    except:
+      print("Error: Could not establish connection - try resetting your Arduino")
+      sys.exit(1)
 
     print("Connected to interface")
 
@@ -43,7 +42,10 @@ class ProgrammingInterface:
       self.serial.write(request)
 
       # Response has to be at least 2 bytes long, otherwise something went wrong
-      response = self.serial.read(chunksize + 1)
+      while True:
+        response = self.serial.read(chunksize + 1)
+        if len(response) > 1:
+          break
       if len(response) > 1:
         status = response[0]
         body = response[1:]
@@ -61,7 +63,8 @@ class ProgrammingInterface:
 
         crc = (~crc + 1) & 0xFF
         line.append(crc)
-        file.write(":%s\n" % line.hex())
+        line = line.hex().upper()
+        file.write(":%s\n" % line)
 
       else:
         break
@@ -116,17 +119,27 @@ class ProgrammingInterface:
     print("Revision: 0x%s" % revision.hex())
 
 parser = argparse.ArgumentParser(description='Interact with the Arduino based EFM8 C2 interface')
-parser.add_argument('action', metavar='ACTION', type=str,
-                    help='Action to perform: read, write or erase',
-                    choices=['read', 'write', 'erase', 'info'],)
-parser.add_argument('port', metavar='PORT', type=str,
+parser.add_argument('--action', metavar='ACTION', type=str, default="info",
+                    help='Action to perform: read, write, info',
+                    choices=['read', 'write', 'info'])
+parser.add_argument('--port', metavar='PORT', type=str, default=None,
                     help='Port to use')
-parser.add_argument('destination', metavar='DESTINATION', type=str, nargs='?', default=None,
-                    help='Destination to write to or read from')
-#parser.add_argument('-m', '--mcu', type=str, default='BB2', choices=['BB1', 'BB2', 'BB51'],
-#                    help='MCU - important to read full space, including bootloader')
+parser.add_argument('--file', metavar='FILE', type=str, default=None,
+                    help='File to write to or read from')
 
 args = parser.parse_args()
+
+if args.port is None:
+  print("must select a port, choose one of the below paths:")
+  ports = serial.tools.list_ports.comports()
+  for port, desc, hwid in ports:
+      print(f"Port: {port}, Description: {desc}, Hardware ID: {hwid}")
+  exit()
+
+if args.action != "info" and args.file is None:
+  print("file must be defined to read or write flash")
+  exit()
+
 interface = ProgrammingInterface(args.port)
 interface.initialize()
 interface.deviceInfo()
@@ -139,7 +152,7 @@ if args.action == 'read':
   file = open(args.destination, "w")
 
   # Fetch the flash segment
-  interface.read(file, 0, 0x3FFF)
+  interface.read(file, 0x0, 0x1840)
 
   # Reading the bootloader on BB51 does not seem to bepossible since we are not
   # getting a response from this address space
