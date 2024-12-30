@@ -35,3 +35,7 @@ This should work on any Arduino Uno or clone running at 16MHz, or Arduino Mega (
 
 ## Resources
 * [SiLabs C2 Application note](https://www.silabs.com/documents/public/application-notes/AN127.pdf)
+
+## License
+
+See the license file. This is heavily based on the repository linked in source from https://github.com/stylesuxx
