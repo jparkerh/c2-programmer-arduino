@@ -145,11 +145,11 @@ interface.initialize()
 interface.deviceInfo()
 
 if args.action == 'read':
-  if not args.destination:
+  if not args.file:
     parser.print_usage()
     parser.exit()
 
-  file = open(args.destination, "w")
+  file = open(args.file, "w")
 
   # Fetch the flash segment
   interface.read(file, 0x0, 0x1840)
@@ -166,11 +166,11 @@ if args.action == 'erase':
   interface.erase()
 
 if args.action == 'write':
-  if not args.destination:
+  if not args.file:
     parser.print_usage()
     parser.exit()
 
-  file = open(args.destination, "r")
+  file = open(args.file, "r")
 
   interface.erase()
   interface.write(file)
