@@ -154,12 +154,6 @@ if args.action == 'read':
   # Fetch the flash segment
   interface.read(file, 0x0, 0x1840)
 
-  # Reading the bootloader on BB51 does not seem to bepossible since we are not
-  # getting a response from this address space
-  # TODO: Fetch the bootloader on BB51
-  # if args.mcu == 'BB51':
-  #  interface.read(file, 0xF000, 0x0800)
-
   file.write(":00000001FF\n")
 
 if args.action == 'erase':

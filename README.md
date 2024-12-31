@@ -15,23 +15,27 @@ D  Pin 10
 CK Pin 11
 ```
 
+Build and upload the correct firmware for the Arduino you have. If you have a mega, use the "mega" environment in PlatformIO IDE.
+
 ### Installing python EFM8 client
-change directory to ./client, then use pipenv to create an virtual env, install dependencies and enter the env:
-```
-pipenv install
-pipenv shell
-```
 
-then run the client like so (assuming `/dev/ttyUSB0` is your Arduino):
+1. change directory to ./client
+1. install pyserial: ``pip install pyserial``
+1. then run the client like so (assuming `COM2` is your Arduino):
 
 ```
-python efm8.py read /dev/ttyUSB0 output.hex
-python efm8.py write /dev/ttyUSB0 input.hex
-python efm8.py erase /dev/ttyUSB0
+# this will print out a list of ports present on your machine. select the one with the arduino.
+python efm8.py
+
+# this should query the device. Ensure that this returns 0x39 as the device ID.
+python efm8.py --port COM2
+
+# this will flash the hex file to the device.
+python efm8.py --port COM2 --action write --file <provided hex file>
 ```
 
 ## Compatibility
-This should work on any Arduino Uno or clone running at 16MHz, or Arduino Mega (change the build def you build for in PIO).
+This should work on any Arduino Uno or clone running at 16MHz, or Arduino Mega (change the build def you build for in PlatformIO).
 
 ## Resources
 * [SiLabs C2 Application note](https://www.silabs.com/documents/public/application-notes/AN127.pdf)
