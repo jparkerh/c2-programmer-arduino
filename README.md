@@ -15,7 +15,11 @@ D  Pin 10
 CK Pin 11
 ```
 
-Build and upload the correct firmware for the Arduino you have. If you have a mega, use the "mega" environment in PlatformIO IDE.
+### Verify dependencies
+
+1. ensure that you have both python and VSCode installed on your machine
+1. install the platformio IDE extension in VSCode
+1. build and upload the correct firmware for the Arduino you have. If you have a mega, use the "mega" environment in PlatformIO IDE.
 
 ### Installing python EFM8 client
 
