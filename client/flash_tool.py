@@ -6,7 +6,7 @@ try:
   PACKAGE_ROOT = _MEIPASS
 except:
   PACKAGE_ROOT = None
-from os import path
+from os import path, _exit
 import subprocess
 
 from tkinter import Tk
@@ -36,10 +36,8 @@ class ProgrammingInterface:
       assert result == b"\x81"
       done = True
     except:
-      print("Error: Could not establish connection - try resetting your Arduino")
-      exit(1)
-
-    print("Connected to interface")
+      exitNow("Error: Could not establish connection - try resetting your Arduino")
+    return True
   
   def prettyHex(self, address, data):
     print(
@@ -105,12 +103,10 @@ class ProgrammingInterface:
       self.serial.write(data)
       response = self.serial.read(1)
       if response != b"\x83":
-        print("Error: Failed writing data")
-        return None
+        exitNow("Error: Failed writing data")
       
       if not self.read(address, len(data)) == expected:
-        print(f"response at address {address} did not match")
-        return None
+        exitNow(f"Error: response at address {address} did not match")
 
     self.reset()
 
@@ -129,9 +125,9 @@ def getPath(filename):
     return path.join(PACKAGE_ROOT, 'data', filename)
   else:
     return path.join(path.dirname(__file__), "..", "data", filename)
-
-FLASHING_COMMAND_PREFIX = "-p ATmega328P -c arduino -P COM4 -U flash:w:"
-FLASHING_COMMAND_SUFFIX = ":i"
+  
+def flashingCommand(serialPort, flashFile):
+  return f"-p ATmega328P -c arduino -P {serialPort} -U flash:w:{flashFile}:i"
 
 class AppContext:
   def __init__(self):
@@ -142,16 +138,19 @@ class AppContext:
     binary_path = getPath("avrdude.exe")
     try:
       command_args = [binary_path]
-      flashing_command = FLASHING_COMMAND_PREFIX + getPath("firmware.hex") + FLASHING_COMMAND_SUFFIX
+      flashing_command = flashingCommand(self._port, getPath("firmware.hex"))
       command_args.extend(flashing_command.split())
       result = subprocess.run(command_args, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
       print(f"Command failed with exit code {e.returncode}")
       print(f"Error output: {e.stderr}")
+      exitNow("Error: could not create programming tool")
   
   def choosePort(self): 
     print("choose port option:")
     ports = serial.tools.list_ports.comports()
+    if len(ports) == 0:
+      exitNow("Error: no com ports available")
     index = 0
     for port, desc, hwid in ports:
         print(f"Option {index}: Port: {port}, Description: {desc}, Hardware ID: {hwid}")
@@ -159,6 +158,8 @@ class AppContext:
     validInputs = index-1
     selection = int(input(f"select an option[0-{validInputs}]: "))
 
+    if selection > len(ports):
+      exitNow("Error: selection out of port range")
     self._port = ports[selection][0]
   
   def getProgrammingInterface(self):
@@ -167,18 +168,16 @@ class AppContext:
     '''
     if self._interface is None:
       if self._port == "":
-        print("no port initialized, can't create interface")
-        return False
+        exitNow("no port initialized, can't create interface")
       self._interface = ProgrammingInterface(self._port)
-      self._interface.initialize()
+      if not self._interface.initialize():
+        exitNow("couldn't initialize connection")
       if self._interface.deviceInfo() != "39":
-        print("correct device not detected, perhaps something wrong with your connections")
-        return False
-    return True
+        exitNow("correct device not detected, perhaps something wrong with your connections")
   
   def flashFile(self):
-    if not self.getProgrammingInterface():
-      return
+    self.getProgrammingInterface()
+
     print("pick file to flash")
     filePath = filedialog.askopenfilename(title="Select firmware file to flash: ", filetypes=[("Hex file", ('*.hex'))])
     
@@ -187,11 +186,16 @@ class AppContext:
     try:
       file = open(filePath, "r")
     except:
-      print("could not open selected file, exiting")
-      return
+      exitNow("could not open selected file")
 
     self._interface.write(file)
 
+def exitNow(error=""):
+  if error != "":
+    input(f"had error: {error}, press c and enter to close... ")
+    _exit(1)
+  input("press c and enter to close... ")
+  _exit(0)
 
 if __name__ == "__main__":
   root = Tk()
@@ -201,4 +205,7 @@ if __name__ == "__main__":
   shouldFlash = input("flash Arduino Uno to create programming tool? (y/n): ")
   if shouldFlash == 'y':
     app.createProgrammingTool()
+      
   app.flashFile()
+  exitNow()
+  
