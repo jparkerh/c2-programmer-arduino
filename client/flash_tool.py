@@ -40,11 +40,11 @@ class ProgrammingInterface:
     return True
   
   def prettyHex(self, address, data):
-    print(
-      "0x{:04X}, Bytes: {:02}, Data: {}".format(
+    pretty = "0x{:04X}, Bytes: {:02}, Data: {}".format(
         address, len(data), data.hex()
       )
-    )
+    print(pretty)
+    return pretty
 
   def read(self, address=0x00, size=0x10):
     # Write request and wait for response
@@ -105,8 +105,8 @@ class ProgrammingInterface:
       if response != b"\x83":
         exitNow("Error: Failed writing data")
       
-      if not self.read(address, len(data)) == expected:
-        exitNow(f"Error: response at address {address} did not match")
+      if self.read(address, len(data)) != expected:
+        exitNow("Error: response at address did not match after retries")
 
     self.reset()
 
@@ -187,7 +187,7 @@ class AppContext:
       file = open(filePath, "r")
     except:
       exitNow("could not open selected file")
-
+    self._interface.erase()
     self._interface.write(file)
 
 def exitNow(error=""):
@@ -205,7 +205,6 @@ if __name__ == "__main__":
   shouldFlash = input("flash Arduino Uno to create programming tool? (y/n): ")
   if shouldFlash == 'y':
     app.createProgrammingTool()
-      
   app.flashFile()
   exitNow()
   
